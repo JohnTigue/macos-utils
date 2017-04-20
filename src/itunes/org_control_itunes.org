@@ -1,0 +1,243 @@
+* Controlling itunes from org-mode
+** Introduction
+I live in org-mode (a.k.a org). If I can do something within org, that
+is good. One should never get out of the boat. One thing I really don't
+want to do is interact directly with iTune (yuck). So, the goal of this
+bit of hacking is figure out how to have playlists and such inside org,
+such that I can just set focus and click to play
+- a song
+- an album
+- a playlist
+- shuffle an album
+- etc.
+
+The "shuffle an album" task should be able to play a classical music album
+and shuffle the pieces but keep the movements in order. For example, say
+there are three pieces of classical music on an album. The first one has
+three movements (read: CD tracks), the second has four, and the third has
+three. Essentially the album is a concatination of three independent playlists.
+There should be a way to say "play this album, shuffling the three pieces randomly"
+and, of course, with in a piece's "sub-playlist" the sequence of play should not be randomize
+
+In the end this project forced me to dabble in AppleScript. Whatever.
+
+Final goal
+- Play albums in iTunes from emacs
+  - links in orgmode that run babel_to_itunes for a given named album
+  - this way don't need to have playlists in iTunes for Albums
+    - alternatively: Doug's [[http://dougscripts.com/itunes/scripts/ss.php?sp=albumplaylists][Make Album Playlists]]
+  - emacs with org becomes an iTunes interface
+
+** References
+- [[https://developer.apple.com/library/content/documentation/AppleScript/Conceptual/AppleScriptLangGuide/introduction/ASLR_intro.html#/apple_ref/doc/uid/TP40000983-CH208-SW1][Introduction to AppleScript Language Guide]]
+- [[https://github.com/TooTallNate/nTunes/blob/master/iTunes.sdef][XML of iTunes.sdef on GitHub]]
+- [[http://dougscripts.com/itunes/index.php][Doug's AppleScripts for iTunes]]
+  - pretty much the reference for the topic
+  - lots of source to study
+  - [[http://dougscripts.com/itunes/itinfo/info03.php][Commonly Used iTunes Commands]]
+
+** Prior art
+- https://gist.github.com/rkumar/503162
+  - shell script to osascript
+- [[https://apple.stackexchange.com/a/46523][How do I find out the applescript commands available for a particular app?]]
+  - AppleScript Editor
+- [[http://alvinalexander.com/apple/itunes-applescript-examples-scripts-mac-reference][iTunes AppleScript examples (command examples)]]
+- [[https://github.com/stig/ob-applescript.el][AppleScript integration for Org Babel: ob-applescript.el]]
+  - Handly bit of org-mode machinery for letting Babel know how to deal with AppleScript execution.
+
+*** afplay
+[[https://developer.apple.com/legacy/library/documentation/Darwin/Reference/ManPages/man1/afplay.1.html][Audio File Play]] (afplay) comes with macOS.
+
+One option would be to play all the track in a directory, using afplay.
+#+BEGIN_SRC sh
+cd some_dir_with_audio_tracks
+find . -name "*.m4a" -exec afplay {} \;
+#+END_SRC
+
+Unfortunately there is not way to pause&resume.
+
+*** itunes-remote
+http://lifehacker.com/itunes-remote-controls-itunes-directly-from-the-command-1754327358
+
+#+BEGIN_SRC sh
+$ npm install --global itunes-remote
+
+$ itunes-remote
+iTunes: search armstrong
+Hold on ………
+undefined:1
+undefined
+^
+
+SyntaxError: Unexpected token u in JSON at position 0
+    at Object.parse (native)
+    at /Users/john/.nvm/v6.10.0/lib/node_modules/itunes-remote/index.js:125:15
+    at Child_Process.<anonymous> (/Users/john/.nvm/v6.10.0/lib/node_modules/itunes-remote/node_modules/osascript/index.js:68:12)
+    at emitOne (events.js:96:13)
+    at Child_Process.emit (events.js:188:7)
+    at ChildProcess.onExit (/Users/john/.nvm/v6.10.0/lib/node_modules/itunes-remote/node_modules/duplex-child-process/index.js:120:12)
+    at ChildProcess.g (events.js:291:16)
+    at emitTwo (events.js:106:13)
+    at ChildProcess.emit (events.js:191:7)
+    at maybeClose (internal/child_process.js:877:16)
+
+npm uninstall --global itunes-remote
+#+END_SRC
+
+** Hand coding osascript
+*** Worked
+#+BEGIN_SRC shell
+osascript -e "Tell application \"iTunes\" to pause"
+osascript -e "Tell application \"iTunes\" to play"
+osascript -e "Tell application \"iTunes\" to play playlist \"Hedwig .\""
+osascript -e "Tell application \"iTunes\" to play (every track whose album is \"Mozart: Violin Sonatas\")"
+osascript -e "Tell application \"iTunes\" to play playlist \"Bach: Simone Dinnerstein\""
+#+END_SRC
+
+#+BEGIN_SRC sh
+tell application "iTunes"
+  set everyPlaylistName to (get name of every playlist)
+end tell
+
+tell application "iTunes"
+  play (every track of playlist "Library" whose album is "Proyecto Akwid")
+end tell
+
+tell application "iTunes"
+  play (every track of playlist "Library" whose album is "Mozart: Violin Sonatas")
+end tell
+
+-- https://discussions.apple.com/thread/1053355?tstart=0
+tell application "iTunes"
+  play (every track of playlist "Library" whose album is "Proyecto Akwid")
+end tell
+#+END_SRC
+
+
+*** Failed
+#+BEGIN_SRC sh
+tell application "iTunes" to play audio CD playlist "Proyect Akwid"
+#+END_SRC
+
+*** Found on web
+#+BEGIN_SRC 
+-- by filename...
+tell application "iTunes"
+  play "Main:Sound:MP3s:Lola:Running Two.mp3"
+end tell
+#+END_SRC
+
+*** Getting somewhere
+How to get Babel to work with AppleScript:
+[[food][bar]]
+[[https://github.com/stig/ob-applescript.el][stig/ob-applescript.el: AppleScript integration for Org Babel]]
+
+Or just hack it:
+#+BEGIN_SRC sh
+osascript <<'END'
+display dialog "Hello, World"
+END
+#+END_SRC
+
+#+RESULTS:
+: button returned:OK
+
+
+Next track.
+#+BEGIN_SRC sh
+osascript <<'END'
+  tell application "iTunes"
+    next track
+  end tell
+END
+#+END_SRC
+
+
+Play and pause.
+#+BEGIN_SRC shell
+osascript -e "Tell application \"iTunes\" to play"
+osascript -e "Tell application \"iTunes\" to pause"
+#+END_SRC
+
+
+Plays all but not in order
+#+BEGIN_SRC sh
+osascript <<'END'
+  tell application "iTunes"
+    set oldfi to fixed indexing
+    set fixed indexing to true
+    play (every track of playlist "Library" whose album is "Mozart: Violin Sonatas")
+    set fixed indexing to oldfi
+  end tell
+END
+#+END_SRC
+
+
+Dump track numbers does show 1..9 i.e. in order.
+#+BEGIN_SRC sh
+tell application "iTunes"
+  set oldfi to fixed indexing
+  set fixed indexing to true
+  set demTracks to (every track of playlist "Library" whose album is "Mozart: Violin Sonatas")
+  set strTrackNumber to ""
+  repeat with aTrack in demTracks
+    set strTrackNumber to strTrackNumber & " " & track number of aTrack
+  end repeat
+  display dialog "track numbers: " & track number of aTrack
+  set fixed indexing to oldfi
+end tell
+#+END_SRC
+
+
+Works but cannot delete while play else will not play
+#+BEGIN_SRC sh
+osascript <<'END'
+  set album_name to "Mozart: Violin Sonatas"
+
+  set tNums to ""
+  tell application "iTunes"
+  	set tmpPL to (make new playlist with properties {name:"Album: " & album_name})
+  	set demTracks to (every track of playlist "Library" whose album is album_name)
+  	repeat with aTrack in demTracks
+  		duplicate aTrack to tmpPL
+  		set tNums to tNums & " " & track number of aTrack
+  	end repeat
+  	play tmpPL
+  	-- delete tmpPL
+  end tell
+  -- display dialog "track numbers: " & tNums
+END
+#+END_SRC
+
+
+Works without making a playlist
+#+BEGIN_SRC sh
+  osascript <<'END'
+    set album_name to "Mozart: Violin Sonatas"
+
+    tell application "iTunes"
+        set tracks to {}
+    	set demTracks to (every track of playlist "Library" whose album is album_name)
+      	repeat with aTrack in demTracks
+            copy aTrack to the end of the tracks
+    	end repeat
+    	play tracks
+    end tell
+  END
+#+END_SRC
+
+
+*** Further work
+- [ ] [[https://github.com/stig/ob-applescript.el][AppleScript integration for Org Babel: ob-applescript.el]]
+- [ ] So can make a playlist from an Album, but cannot delete the playlist while playing
+  - There must be a way to make a non-user playlist, play that like:
+      play (every track of playlist "Library" whose album is "Mozart: Violin Sonatas")
+  - that's not creating a playlist.
+    - so make an array? and say play myArray
+  - actually, mabye a playlist is required. that what [[http://dougscripts.com/itunes/scripts/ss.php?sp=randomalbumplayer][Play Random Album]] does
+    - just need to have one "Temp workspach" playlist
+- [X] Got to be a better way to ask iTunes to play an album than intermediary playlist.
+  - nope, iTunes suck for that. Weird. Have to go through playlists
+- [ ] How to specify format. THAT WOULD BE AWSOME
+  - i.e. find files the mp3 and m4a duplicates and remove the mp3s
+- [ ] Classical CD multi-track piece shuffling
